@@ -18,20 +18,41 @@ from src.utils.exceptions import AbaNaoEncontradaError, PlanilhaIndisponivelErro
 
 
 def _autenticar_google():
-    if not settings.GOOGLE_SERVICE_ACCOUNT_FILE or not settings.GOOGLE_SERVICE_ACCOUNT_FILE.exists():
+    if not settings.GOOGLE_SERVICE_ACCOUNT_FILE:
         raise PlanilhaIndisponivelError(
-            "arquivo de credencial da service account nao encontrado (confere o "
-            "GOOGLE_SERVICE_ACCOUNT_FILE no .env). se voce so quer testar o projeto sem "
-            "configurar o Google Cloud, deixe FONTE_DADOS=local no .env."
+            "GOOGLE_SERVICE_ACCOUNT_FILE nao configurado no .env. se voce so quer testar o "
+            "projeto sem configurar o Google Cloud, deixe FONTE_DADOS=local no .env."
         )
 
-    creds = Credentials.from_service_account_file(
-        str(settings.GOOGLE_SERVICE_ACCOUNT_FILE), scopes=settings.GOOGLE_SCOPES
-    )
-    return gspread.authorize(creds)
+    if not settings.GOOGLE_SERVICE_ACCOUNT_FILE.exists():
+        raise PlanilhaIndisponivelError(
+            f"arquivo de credencial nao encontrado em {settings.GOOGLE_SERVICE_ACCOUNT_FILE}. "
+            "confere o GOOGLE_SERVICE_ACCOUNT_FILE no .env."
+        )
+
+    try:
+        creds = Credentials.from_service_account_file(
+            str(settings.GOOGLE_SERVICE_ACCOUNT_FILE), scopes=settings.GOOGLE_SCOPES
+        )
+    except (ValueError, KeyError) as e:
+        # acontece quando o arquivo existe mas nao é um JSON de service
+        # account valido (corrompido, baixado errado, é outro tipo de
+        # credencial, etc)
+        raise PlanilhaIndisponivelError(
+            f"o arquivo {settings.GOOGLE_SERVICE_ACCOUNT_FILE} nao parece ser uma chave de "
+            f"service account valida: {e}"
+        )
+
+    try:
+        return gspread.authorize(creds)
+    except Exception as e:
+        raise PlanilhaIndisponivelError(f"nao consegui autenticar no Google: {e}")
 
 
 def _buscar_do_sheets() -> pd.DataFrame:
+    if not settings.SPREADSHEET_ID:
+        raise PlanilhaIndisponivelError("SPREADSHEET_ID nao configurado no .env.")
+
     cliente = _autenticar_google()
 
     try:
@@ -43,17 +64,29 @@ def _buscar_do_sheets() -> pd.DataFrame:
         )
     except gspread.exceptions.APIError as e:
         raise PlanilhaIndisponivelError(f"erro da API do Google Sheets: {e}")
+    except Exception as e:
+        # cobre falha de rede (sem internet, DNS, timeout etc) e qualquer
+        # outra coisa que a gente nao previu especificamente - melhor virar
+        # um erro claro do que um traceback cru
+        raise PlanilhaIndisponivelError(f"nao consegui conectar no Google Sheets: {e}")
 
     try:
         aba = planilha.worksheet(settings.SPREADSHEET_TAB_NAME)
     except gspread.exceptions.WorksheetNotFound:
-        abas_existentes = [w.title for w in planilha.worksheets()]
+        try:
+            abas_existentes = [w.title for w in planilha.worksheets()]
+        except Exception:
+            abas_existentes = "(nao consegui listar)"
         raise AbaNaoEncontradaError(
             f"aba '{settings.SPREADSHEET_TAB_NAME}' nao existe nessa planilha. "
             f"abas disponiveis: {abas_existentes}"
         )
 
-    registros = aba.get_all_records()
+    try:
+        registros = aba.get_all_records()
+    except Exception as e:
+        raise PlanilhaIndisponivelError(f"erro lendo os dados da aba '{settings.SPREADSHEET_TAB_NAME}': {e}")
+
     return pd.DataFrame(registros)
 
 
@@ -67,9 +100,15 @@ def _buscar_do_arquivo_local() -> pd.DataFrame:
     try:
         return pd.read_excel(settings.ARQUIVO_DADOS_LOCAL, sheet_name=settings.SPREADSHEET_TAB_NAME)
     except ValueError:
+        # pandas lanca ValueError especificamente quando o nome da aba nao existe
         raise AbaNaoEncontradaError(
             f"a aba '{settings.SPREADSHEET_TAB_NAME}' nao existe no arquivo local "
             f"{settings.ARQUIVO_DADOS_LOCAL}."
+        )
+    except Exception as e:
+        # arquivo corrompido, nao é um .xlsx de verdade, sem permissao de leitura etc
+        raise PlanilhaIndisponivelError(
+            f"nao consegui ler o arquivo local {settings.ARQUIVO_DADOS_LOCAL}: {e}"
         )
 
 

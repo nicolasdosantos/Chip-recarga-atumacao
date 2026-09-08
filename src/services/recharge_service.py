@@ -16,36 +16,65 @@ import pandas as pd
 from src.config import settings
 
 
-def _parse_data(valor: str) -> date | None:
-    """tenta ler a data em qualquer um dos formatos que a planilha usa.
-    se nao conseguir em nenhum, devolve None (quem chama decide o que fazer)"""
+def _texto_seguro(valor) -> str:
+    """converte pra string tratando NaN do pandas como vazio (em vez do
+    texto literal "nan"), pra nao vazar isso pro relatorio/mensagem final."""
+    return "" if pd.isna(valor) else str(valor).strip()
+
+
+def _extrair_data(valor_original) -> tuple[date | None, str]:
+    """tenta chegar numa data a partir do valor cru da celula, e tambem
+    devolve uma versao em texto (pro relatorio mostrar o que tinha lá).
+
+    a celula pode vir de duas formas bem diferentes:
+    - já como um objeto de data de verdade (datetime/Timestamp), se a
+      coluna "Última recarga" estiver formatada como data no Sheets/Excel
+    - como texto (a maioria dos casos aqui), que a gente tenta ler nos
+      formatos configurados em FORMATOS_DATA_ACEITOS
+
+    sem tratar o primeiro caso, uma coluna formatada como data faria TODO
+    chip cair silenciosamente em "pendente de analise", mesmo com data
+    perfeitamente valida."""
+    if pd.isna(valor_original):
+        return None, ""
+
+    if isinstance(valor_original, pd.Timestamp):
+        data = valor_original.date()
+        return data, data.strftime("%d/%m/%Y")
+
+    if isinstance(valor_original, datetime):
+        data = valor_original.date()
+        return data, data.strftime("%d/%m/%Y")
+
+    if isinstance(valor_original, date):
+        return valor_original, valor_original.strftime("%d/%m/%Y")
+
+    texto = str(valor_original).strip()
     for formato in settings.FORMATOS_DATA_ACEITOS:
         try:
-            return datetime.strptime(valor, formato).date()
+            return datetime.strptime(texto, formato).date(), texto
         except ValueError:
             continue
-    return None
+
+    return None, texto
 
 
 def analisar_chip(linha: pd.Series, hoje: date | None = None) -> dict:
     hoje = hoje or date.today()
 
-    # celula realmente vazia no excel vira NaN (float) quando lida pelo
-    # pandas - sem esse tratamento, "str(nan)" vira o texto literal "nan" e
-    # a mensagem de erro fica confusa ("data em formato não reconhecido
-    # (nan)") em vez do caso mais claro de "sem data preenchida"
     valor_original = linha.get(settings.COL_ULTIMA_RECARGA, "")
-    valor_bruto = "" if pd.isna(valor_original) else str(valor_original).strip()
+    data_recarga, valor_bruto = _extrair_data(valor_original)
 
     base = {
-        "identificacao": linha.get(settings.COL_IDENTIFICACAO, ""),
-        "numero": linha.get(settings.COL_NUMERO, ""),
-        "uso": linha.get(settings.COL_USO, ""),
+        "identificacao": _texto_seguro(linha.get(settings.COL_IDENTIFICACAO, "")),
+        "numero": _texto_seguro(linha.get(settings.COL_NUMERO, "")),
+        "uso": _texto_seguro(linha.get(settings.COL_USO, "")),
         "ultima_recarga_bruta": valor_bruto,
     }
 
-    # caso 1: ja tem um aviso manual dizendo que precisa recarregar
-    if valor_bruto.upper() in settings.SINAIS_RECARGA_URGENTE:
+    # caso 1: ja tem um aviso manual dizendo que precisa recarregar (isso so
+    # faz sentido pra celula de texto, nao pra data de verdade)
+    if data_recarga is None and valor_bruto.upper() in settings.SINAIS_RECARGA_URGENTE:
         return {
             **base,
             "situacao": "precisa_recarga",
@@ -55,7 +84,7 @@ def analisar_chip(linha: pd.Series, hoje: date | None = None) -> dict:
         }
 
     # caso 2: nao tem informacao nenhuma
-    if valor_bruto in ("", "-"):
+    if data_recarga is None and valor_bruto in ("", "-"):
         return {
             **base,
             "situacao": "pendente_analise",
@@ -65,7 +94,6 @@ def analisar_chip(linha: pd.Series, hoje: date | None = None) -> dict:
         }
 
     # caso 3: tem alguma coisa escrita, mas nao é uma data que a gente reconhece
-    data_recarga = _parse_data(valor_bruto)
     if data_recarga is None:
         return {
             **base,

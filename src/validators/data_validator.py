@@ -28,11 +28,20 @@ def validar_estrutura(df: pd.DataFrame) -> None:
         )
 
 
+def _valor_vazio(valor) -> bool:
+    # celula vazia no excel/sheets vira NaN (float) quando lida pelo pandas.
+    # sem esse "pd.isna" primeiro, "str(nan).strip()" da o texto literal
+    # "nan" (nao ""), e a linha deixava de ser detectada como vazia
+    if pd.isna(valor):
+        return True
+    return str(valor).strip() == ""
+
+
 def _linha_vazia(linha: pd.Series) -> bool:
     # linha sem identificacao e sem numero nao é um chip de verdade,
     # provavelmente é uma linha em branco no meio da planilha
     campos_chave = [settings.COL_IDENTIFICACAO, settings.COL_NUMERO]
-    return all(str(linha.get(campo, "")).strip() == "" for campo in campos_chave)
+    return all(_valor_vazio(linha.get(campo, "")) for campo in campos_chave)
 
 
 def separar_linhas_validas(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:

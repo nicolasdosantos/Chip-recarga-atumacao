@@ -95,9 +95,14 @@ def _linux_verificar_ferramentas():
 def _linux_discord_instalado() -> bool:
     if shutil.which("discord"):  # instalação via .deb/pacote nativo
         return True
-    resultado = subprocess.run(
-        ["flatpak", "info", settings.DISCORD_APP_ID], capture_output=True, text=True
-    )
+    if shutil.which("flatpak") is None:  # nem discord nativo nem flatpak - nao tem como ter Discord instalado
+        return False
+    try:
+        resultado = subprocess.run(
+            ["flatpak", "info", settings.DISCORD_APP_ID], capture_output=True, text=True
+        )
+    except OSError:
+        return False
     return resultado.returncode == 0
 
 
@@ -118,10 +123,18 @@ def _linux_abrir_discord():
     if shutil.which("discord"):
         subprocess.Popen(["discord"])
         return
-    # --ozone-platform=x11 e essencial aqui: por padrao o Discord (electron)
-    # roda com renderizacao nativa wayland, e nesse modo a janela fica
-    # invisivel pro wmctrl/xdotool (que so enxergam janelas X11/XWayland).
-    subprocess.Popen(["flatpak", "run", settings.DISCORD_APP_ID, "--ozone-platform=x11"])
+    if shutil.which("flatpak") is None:
+        raise NotificacaoDiscordError(
+            "nao encontrei o Discord (nem o binario nativo 'discord', nem 'flatpak' instalado "
+            "nessa maquina). instale o Discord em discord.com/download e tente de novo."
+        )
+    try:
+        # --ozone-platform=x11 e essencial aqui: por padrao o Discord (electron)
+        # roda com renderizacao nativa wayland, e nesse modo a janela fica
+        # invisivel pro wmctrl/xdotool (que so enxergam janelas X11/XWayland).
+        subprocess.Popen(["flatpak", "run", settings.DISCORD_APP_ID, "--ozone-platform=x11"])
+    except OSError as e:
+        raise NotificacaoDiscordError(f"nao consegui iniciar o Discord via flatpak: {e}")
 
 
 def _linux_focar_janela_discord():
@@ -204,7 +217,14 @@ def _windows_discord_instalado() -> bool:
 def _windows_titulo_janela_discord() -> str:
     import pygetwindow as gw
 
-    for titulo in gw.getAllTitles():
+    try:
+        titulos = gw.getAllTitles()
+    except Exception:
+        # se a lib falhar por algum motivo, trato como "nao sei o titulo"
+        # em vez de derrubar o fluxo - quem chama ja lida bem com string vazia
+        return ""
+
+    for titulo in titulos:
         if "Discord" in titulo:
             return titulo
     return ""
@@ -227,7 +247,12 @@ def _windows_abrir_discord():
 def _windows_focar_janela_discord():
     import pygetwindow as gw
 
-    janelas = [w for w in gw.getWindowsWithTitle("Discord") if "Discord" in w.title]
+    try:
+        candidatas = gw.getWindowsWithTitle("Discord")
+    except Exception as e:
+        raise NotificacaoDiscordError(f"nao consegui procurar a janela do Discord: {e}")
+
+    janelas = [w for w in candidatas if "Discord" in w.title]
     if not janelas:
         raise NotificacaoDiscordError("nao encontrei a janela do Discord pra focar.")
 
@@ -397,32 +422,40 @@ def _conversa_correta_aberta(contato: str) -> bool:
 
 def _abrir_conversa_com_contato(contato: str):
     """abre a DM do contato via Ctrl+K, com retry: se depois de abrir o
-    titulo da janela nao bater com o contato esperado, tenta de novo do
-    zero (Escape pra fechar qualquer coisa que tenha ficado no ar + busca
-    de novo) em vez de seguir digitando em cima de algo que pode estar
-    errado."""
+    titulo da janela nao bater com o contato esperado (OU se qualquer passo
+    no meio do caminho falhar - tipo uma tecla que nao "pegou" por algum
+    motivo pontual), tenta de novo do zero (Escape pra fechar qualquer coisa
+    que tenha ficado no ar + busca de novo) em vez de: (a) seguir digitando
+    em cima de algo que pode estar errado, ou (b) desistir na primeira falha
+    pontual sem nem tentar de novo."""
+    ultimo_erro = None
+
     for _tentativa in range(1, settings.DISCORD_MAX_TENTATIVAS_ABRIR_CONVERSA + 1):
-        _teclar("cancelar")  # fecha qualquer busca/modal que tenha ficado aberto de antes
-        time.sleep(0.5)
+        try:
+            _teclar("cancelar")  # fecha qualquer busca/modal que tenha ficado aberto de antes
+            time.sleep(0.5)
 
-        _teclar("busca")
-        time.sleep(settings.DISCORD_ESPERA_ABRIR_BUSCA)
+            _teclar("busca")
+            time.sleep(settings.DISCORD_ESPERA_ABRIR_BUSCA)
 
-        _digitar(contato)
-        time.sleep(settings.DISCORD_ESPERA_FILTRAR_BUSCA)
+            _digitar(contato)
+            time.sleep(settings.DISCORD_ESPERA_FILTRAR_BUSCA)
 
-        _teclar("confirmar")
-        time.sleep(settings.DISCORD_ESPERA_ABRIR_CONVERSA)
+            _teclar("confirmar")
+            time.sleep(settings.DISCORD_ESPERA_ABRIR_CONVERSA)
 
-        if _conversa_correta_aberta(contato):
-            return
+            if _conversa_correta_aberta(contato):
+                return
+        except NotificacaoDiscordError as e:
+            ultimo_erro = e
 
         time.sleep(settings.DISCORD_ESPERA_ENTRE_TENTATIVAS)
 
+    detalhe = f" (ultimo erro no caminho: {ultimo_erro})" if ultimo_erro else ""
     raise NotificacaoDiscordError(
         f"depois de {settings.DISCORD_MAX_TENTATIVAS_ABRIR_CONVERSA} tentativa(s), nao consegui "
         f"confirmar que a conversa com '{contato}' abriu (titulo da janela ficou "
-        f"'{_titulo_janela_discord()}'). abortando ANTES de digitar a mensagem, pra nao "
+        f"'{_titulo_janela_discord()}'){detalhe}. abortando ANTES de digitar a mensagem, pra nao "
         "correr o risco de mandar pro lugar errado."
     )
 
