@@ -30,13 +30,19 @@ def _parse_data(valor: str) -> date | None:
 def analisar_chip(linha: pd.Series, hoje: date | None = None) -> dict:
     hoje = hoje or date.today()
 
+    # celula realmente vazia no excel vira NaN (float) quando lida pelo
+    # pandas - sem esse tratamento, "str(nan)" vira o texto literal "nan" e
+    # a mensagem de erro fica confusa ("data em formato não reconhecido
+    # (nan)") em vez do caso mais claro de "sem data preenchida"
+    valor_original = linha.get(settings.COL_ULTIMA_RECARGA, "")
+    valor_bruto = "" if pd.isna(valor_original) else str(valor_original).strip()
+
     base = {
         "identificacao": linha.get(settings.COL_IDENTIFICACAO, ""),
         "numero": linha.get(settings.COL_NUMERO, ""),
         "uso": linha.get(settings.COL_USO, ""),
-        "ultima_recarga_bruta": str(linha.get(settings.COL_ULTIMA_RECARGA, "")).strip(),
+        "ultima_recarga_bruta": valor_bruto,
     }
-    valor_bruto = base["ultima_recarga_bruta"]
 
     # caso 1: ja tem um aviso manual dizendo que precisa recarregar
     if valor_bruto.upper() in settings.SINAIS_RECARGA_URGENTE:

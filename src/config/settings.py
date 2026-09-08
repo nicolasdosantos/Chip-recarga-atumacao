@@ -9,9 +9,17 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent.parent.parent  # raiz do projeto
 load_dotenv(BASE_DIR / ".env")
 
-# --- Google Sheets ---
-GOOGLE_SERVICE_ACCOUNT_FILE = BASE_DIR / os.environ["GOOGLE_SERVICE_ACCOUNT_FILE"]
-SPREADSHEET_ID = os.environ["SPREADSHEET_ID"]
+# --- Fonte dos dados ---
+# "local"  -> le data/example_data.xlsx, nao precisa de credencial nenhuma
+#             (é o que vem configurado no .env.example, pra dar pra rodar o
+#             projeto assim que clonar, sem precisar montar Google Cloud)
+# "sheets" -> le a planilha real do Google Sheets (uso de producao)
+FONTE_DADOS = os.environ.get("FONTE_DADOS", "local").strip().lower()
+
+# --- Google Sheets (só é usado/exigido se FONTE_DADOS=sheets) ---
+_service_account_env = os.environ.get("GOOGLE_SERVICE_ACCOUNT_FILE", "")
+GOOGLE_SERVICE_ACCOUNT_FILE = BASE_DIR / _service_account_env if _service_account_env else None
+SPREADSHEET_ID = os.environ.get("SPREADSHEET_ID", "")
 SPREADSHEET_TAB_NAME = os.environ.get("SPREADSHEET_TAB_NAME", "Fly")
 
 # a service account so precisa de leitura, entao usa o escopo mais restrito possivel
@@ -40,6 +48,7 @@ SINAIS_RECARGA_URGENTE = {"RECARREGAR", "RECARGA RECUSADA"}
 LOGS_DIR = BASE_DIR / "logs"
 DATA_DIR = BASE_DIR / "data"
 RELATORIOS_DIR = BASE_DIR / "relatorios"
+ARQUIVO_DADOS_LOCAL = DATA_DIR / "example_data.xlsx"  # usado quando FONTE_DADOS=local
 
 # formatos de data que a planilha pode ter (tentamos nessa ordem)
 FORMATOS_DATA_ACEITOS = ["%d/%m/%Y", "%d.%m.%y"]
