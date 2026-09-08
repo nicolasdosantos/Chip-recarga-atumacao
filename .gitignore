@@ -1,0 +1,20 @@
+# ambiente virtual
+.venv/
+venv/
+
+# python
+__pycache__/
+*.pyc
+
+# segredo - nunca comitar
+.env
+credentials/*
+!credentials/.gitkeep
+
+# saida gerada em tempo de execucao (tem dado real da empresa, nao vai pro git)
+logs/*.log
+relatorios/*.txt
+
+# dado real (se algum dia baixar planilha real pra testar local)
+data/*.xlsx
+!data/example_data.xlsx

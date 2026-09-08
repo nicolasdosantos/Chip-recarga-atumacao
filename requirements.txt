@@ -1,0 +1,13 @@
+# acesso ao Google Sheets
+gspread==6.1.4
+google-auth==2.35.0
+
+# leitura/analise dos dados
+pandas==2.2.2
+openpyxl==3.1.5
+
+# variaveis de ambiente (.env)
+python-dotenv==1.0.1
+
+# notificacao no discord: usa "xdotool" e "wmctrl" (binarios de sistema,
+# instalar com "sudo apt install wmctrl xdotool" - nao e pacote pip)
