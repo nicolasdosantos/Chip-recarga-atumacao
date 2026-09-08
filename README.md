@@ -173,6 +173,10 @@ Se `DISCORD_ATIVADO=false` (padrão), essa etapa é pulada e o resto da automaç
 
 > ⚠️ Hoje o `DISCORD_CONTATO_NOME` configurado é uma conta de teste pessoal, só pra validar o fluxo de envio. Antes de apontar pra pessoa responsável de verdade pelo PIX, vale rodar mais alguns testes.
 
+## Limitações conhecidas
+
+- **O caminho Windows da notificação no Discord nunca rodou de verdade num Windows.** Só tive acesso a Linux pra testar (e testei bastante ali - vários dos bugs listados acima só apareceram rodando na prática). A implementação Windows (`pyautogui` + `pygetwindow`) foi escrita e revisada com base na documentação oficial das duas bibliotecas e em problemas conhecidos delas (ex: o `pygetwindow.activate()` às vezes lança exceção mesmo quando funciona — já tratado no código), mas continua sem validação real até alguém rodar num Windows de verdade e confirmar.
+
 ## Melhorias futuras
 
 - Trocar a notificação por API de bot do Discord (webhook num canal, por exemplo), caso a limitação da DM via bot deixe de ser um problema

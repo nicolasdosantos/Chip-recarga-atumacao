@@ -235,9 +235,20 @@ def _windows_focar_janela_discord():
     try:
         if janela.isMinimized:
             janela.restore()
+    except Exception:
+        pass
+
+    try:
         janela.activate()
-    except Exception as e:
-        raise NotificacaoDiscordError(f"nao consegui focar a janela do Discord: {e}")
+    except Exception:
+        # o pygetwindow tem um bug conhecido: o activate() as vezes FUNCIONA
+        # mas ainda assim lanca uma excecao (erro de codigo do windows
+        # devolvido errado pela lib). por isso nao trato isso como falha
+        # fatal aqui - só ignoro e sigo. se o foco realmente falhou de
+        # verdade, quem vai pegar isso é a conferencia de titulo que roda
+        # logo depois (_conversa_correta_aberta), que so avanca se o Ctrl+K
+        # realmente abriu a busca do discord.
+        pass
 
 
 def _windows_teclar(teclas: tuple):
