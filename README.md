@@ -98,25 +98,28 @@ Cada camada tem uma responsabilidade só: `spreadsheet_service` não sabe nada s
 
 ## Como executar
 
+### Testando rápido, sem precisar de Google Cloud
+
+O projeto já vem pronto pra rodar com um dado de exemplo anonimizado (`data/example_data.xlsx`), sem precisar configurar nada no Google Cloud:
+
 ```bash
-# 1. criar e ativar o ambiente virtual
 python3 -m venv .venv
 source .venv/bin/activate
-
-# 2. instalar as dependencias
 pip install -r requirements.txt
-
-# 3. configurar o .env (copie o exemplo e preencha)
-cp .env.example .env
-# edite o .env com o ID da planilha e o caminho da chave da service account
-
-# 4. colocar a chave da Service Account em credentials/service_account.json
-#    (gerada no Google Cloud Console: IAM e admin > Contas de serviço > Chaves)
-#    e compartilhar a planilha com o e-mail dessa conta de servico (papel: Leitor)
-
-# 5. rodar
+cp .env.example .env      # já vem com FONTE_DADOS=local
 python -m src.main
 ```
+
+Isso já mostra o relatório completo funcionando (leitura, validação, regra de recarga) com dado fictício. Pra gerar um `example_data.xlsx` novo (ou editar os casos de teste), roda `python data/gerar_exemplo.py`.
+
+### Usando com a planilha real (Google Sheets)
+
+1. No `.env`, mude pra `FONTE_DADOS=sheets`
+2. Crie uma Service Account no Google Cloud Console, ative a Google Sheets API, e gere uma chave (`IAM e admin > Contas de serviço > Chaves > Criar nova chave > JSON`)
+3. Coloque o arquivo baixado em `credentials/service_account.json`
+4. Compartilhe a planilha real com o e-mail da Service Account (papel: **Leitor**)
+5. Preencha `SPREADSHEET_ID` e `SPREADSHEET_TAB_NAME` no `.env` com os dados da planilha real
+6. `python -m src.main`
 
 O relatório aparece no console e também é salvo em `relatorios/`. O log de cada execução fica em `logs/`.
 
