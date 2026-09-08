@@ -53,10 +53,10 @@ ARQUIVO_DADOS_LOCAL = DATA_DIR / "example_data.xlsx"  # usado quando FONTE_DADOS
 # formatos de data que a planilha pode ter (tentamos nessa ordem)
 FORMATOS_DATA_ACEITOS = ["%d/%m/%Y", "%d.%m.%y"]
 
-# --- Discord (notificacao via PyAutoGUI, fase posterior) ---
+# --- Discord (notificacao via automacao de interface - funciona em Linux e Windows) ---
 DISCORD_ATIVADO = os.environ.get("DISCORD_ATIVADO", "false").strip().lower() == "true"
 DISCORD_CONTATO_NOME = os.environ.get("DISCORD_CONTATO_NOME", "")
-DISCORD_APP_ID = "com.discordapp.Discord"  # id do flatpak instalado nessa maquina
+DISCORD_APP_ID = "com.discordapp.Discord"  # id do flatpak (so usado no Linux)
 
 # tempos de espera do fluxo de automacao do discord (em segundos)
 # aumentei tudo de proposito - descobri na pratica que ir rapido demais faz

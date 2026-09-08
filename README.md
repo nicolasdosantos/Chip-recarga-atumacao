@@ -86,7 +86,7 @@ Cada camada tem uma responsabilidade só: `spreadsheet_service` não sabe nada s
 - **Pandas** — leitura e manipulação dos dados
 - **gspread + google-auth** — integração com Google Sheets via Service Account (autenticação server-to-server, sem login interativo — ideal pra automação que roda sozinha)
 - **python-dotenv** — configuração via variáveis de ambiente
-- **xdotool + wmctrl** (binários de sistema) — só pra notificação opcional no Discord (ver seção própria abaixo); todo o resto do projeto usa API, não automação de interface
+- **`xdotool`/`wmctrl` (Linux) ou `pyautogui`/`pygetwindow` (Windows)** — só pra notificação opcional no Discord (ver seção própria abaixo); todo o resto do projeto usa API, não automação de interface
 - **logging** (biblioteca padrão) — log estruturado em arquivo
 
 ## Segurança e privacidade
@@ -141,12 +141,35 @@ Testando essa parte na prática apareceram alguns problemas que valem registrar,
 
 Como funciona, resumindo: usa o atalho **Ctrl+K** do Discord ("Ir para...") pra buscar o nome do contato — evita depender de posição fixa na lista de contatos, que muda toda hora.
 
+### Windows e Linux
+
+A automação detecta o sistema operacional (`platform.system()`) e usa a ferramenta certa em cada um — a lógica de "abrir busca, digitar, conferir título, enviar" é a mesma, só a camada de baixo nível muda:
+
+| | Linux | Windows |
+|---|---|---|
+| Apertar tecla / digitar | `xdotool` (binário de sistema) | `pyautogui` |
+| Achar/focar janela | `wmctrl` (binário de sistema) | `pygetwindow` |
+| Abrir o Discord | `flatpak run ... --ozone-platform=x11` (ou `discord` se instalado nativo) | `%LOCALAPPDATA%\Discord\Update.exe` |
+
+No Linux precisei trocar o `pyautogui` (que uso no Windows) pelo `xdotool`: o `pyautogui` usa `python-xlib` por baixo, e ele não conseguia se autenticar no X11 no ambiente onde testei — o `xdotool` (ferramenta nativa do sistema) funcionou sem esse problema.
+
+> ⚠️ Só tive Linux disponível pra testar de verdade (testei bastante, inclusive vários bugs reais que apareceram na prática — veja a lista abaixo). A parte Windows segue a documentação oficial do `pyautogui`/`pygetwindow`, mas não rodei num Windows de verdade ainda.
+
+**Antes de tentar usar**, a automação confere se o Discord está instalado (`verificar_discord_instalado()` — olha o `%LOCALAPPDATA%\Discord` no Windows, ou `flatpak info` / `which discord` no Linux) e dá um erro claro, com link pra baixar, se não encontrar — em vez de deixar o resto do fluxo falhar tentando abrir um app que não existe.
+
 **Setup:**
-1. Instalar as dependências de janela: `sudo apt install wmctrl xdotool`
+1. **Linux:** instalar `sudo apt install wmctrl xdotool`. **Windows:** as libs (`pyautogui`, `pygetwindow`) já entram no `pip install -r requirements.txt` (o `requirements.txt` só instala elas quando o sistema é Windows)
 2. Ter o Discord desktop instalado (a automação abre/foca ele sozinha)
 3. No `.env`: `DISCORD_ATIVADO=true` e `DISCORD_CONTATO_NOME=<nome de exibição exato da pessoa no Discord>`
 
-Se `DISCORD_ATIVADO=false` (padrão), essa etapa é pulada e o resto da automação funciona normalmente — inclusive sem precisar de tela gráfica disponível (o `xdotool`/`wmctrl` só são chamados quando a notificação de fato vai ser usada).
+Se `DISCORD_ATIVADO=false` (padrão), essa etapa é pulada e o resto da automação funciona normalmente — inclusive sem precisar de tela gráfica disponível (as libs/binários de automação só são usados quando a notificação de fato vai ser disparada).
+
+### Problemas reais encontrados testando (e como foram resolvidos)
+
+- **Discord precisa abrir com `--ozone-platform=x11`** (Linux) — por padrão o Discord (Electron) roda com renderização nativa Wayland, e nesse modo a janela fica **invisível** pro `wmctrl`/`xdotool`. A automação sempre abre o Discord com essa flag; se ele já estiver aberto sem ela, é preciso fechar e deixar a automação abrir de novo.
+- **Nunca digitar sem antes confirmar que abriu a conversa certa** — o Ctrl+K + Enter pareceu simples, mas digitando rápido demais a busca do Discord por vezes não filtrava a tempo e o Enter selecionava outro resultado. A automação agora **confere o título da janela** (ex: `@FrosT - Discord`) antes de digitar qualquer coisa; se não bater com o contato esperado, tenta de novo (até `DISCORD_MAX_TENTATIVAS_ABRIR_CONVERSA` vezes) e, se mesmo assim não conseguir confirmar, **desiste sem mandar nada** — mais vale falhar de forma visível do que mandar mensagem pro lugar errado.
+- **Caractere acentuado às vezes sumia** (`"Físico"` virava `"Fsico"`, travessão `"—"` desaparecia, no Linux) — digitar um caractere fora do teclado padrão faz a ferramenta de automação remapear uma tecla na hora, e isso ocasionalmente falhava. A automação agora tira acento e troca travessão por hífen antes de digitar qualquer coisa no Discord (o relatório `.txt` continua com acentuação normal).
+- **Delay entre teclas configurável** (`DISCORD_DELAY_DIGITACAO_MS`, padrão 200ms) — digitar rápido demais também atrapalhava a busca do contato; um delay maior deixou bem mais estável.
 
 > ⚠️ Hoje o `DISCORD_CONTATO_NOME` configurado é uma conta de teste pessoal, só pra validar o fluxo de envio. Antes de apontar pra pessoa responsável de verdade pelo PIX, vale rodar mais alguns testes.
 
